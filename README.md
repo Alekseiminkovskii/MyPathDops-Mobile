@@ -1,50 +1,109 @@
-# Welcome to your Expo app 👋
+# MyPathDops Mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Field operations mobile app for telecom contractors.**  
+Capture photos with GPS, complete safety forms, and sync job data — all from your phone.
 
-## Get started
+---
 
-1. Install dependencies
+## Overview
 
-   ```bash
-   npm install
-   ```
+MyPathDops Mobile is the field-facing companion to the [MyPathDops web portal](https://github.com/Alekseiminkovskii/MyPathDops). Field technicians use it on-site to document work, capture geotagged photos, and update job statuses in real time.
 
-2. Start the app
+---
 
-   ```bash
-   npx expo start
-   ```
+## Features
 
-In the output, you'll find options to open the app in a
+- **Authentication** — Secure sign-in with email and password via Supabase Auth
+- **Jobs list** — View all assigned jobs with status badges and pull-to-refresh
+- **Job detail** — Full job info with photo gallery, timestamps, and GPS coordinates
+- **Photo capture** — Take photos directly from camera or pick from gallery
+- **GPS tagging** — Every photo is automatically tagged with location coordinates
+- **Timestamp** — Each photo records exact capture time
+- **Cloud sync** — All data syncs instantly to Supabase (shared with web portal)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Tech stack
 
-## Get a fresh project
+| Layer       | Technology                        |
+| ----------- | --------------------------------- |
+| Framework   | React Native (Expo SDK 54)        |
+| Navigation  | Expo Router (file-based)          |
+| Backend     | Supabase (shared with web portal) |
+| Auth        | Supabase Auth + AsyncStorage      |
+| Camera      | expo-image-picker                 |
+| Location    | expo-location                     |
+| File system | expo-file-system                  |
+| Storage     | Supabase Storage                  |
 
-When you're ready, run:
+---
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 18+
+- Expo Go app on your phone ([iOS](https://apps.apple.com/app/expo-go/id982107779) / [Android](https://play.google.com/store/apps/details?id=host.exp.exponent))
+- A [Supabase](https://supabase.com) project (shared with MyPathDops web)
+
+### Setup
 
 ```bash
-npm run reset-project
+git clone https://github.com/Alekseiminkovskii/MyPathDops-Mobile.git
+cd MyPathDops-Mobile
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Create `lib/supabase.ts`:
 
-## Learn more
+```typescript
+import "react-native-url-polyfill/auto";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createClient } from "@supabase/supabase-js";
 
-To learn more about developing your project with Expo, look at the following resources:
+export const supabase = createClient("your-supabase-url", "your-anon-key", {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+});
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Run
 
-## Join the community
+```bash
+npx expo start
+```
 
-Join our community of developers creating universal apps.
+Scan the QR code with Expo Go on your phone.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+---
+
+## Project structure
+
+```
+app/
+  _layout.tsx         — Root layout (Stack navigator)
+  index.tsx           — Auth redirect entry point
+  login.tsx           — Sign in screen
+  jobs/
+    index.tsx         — Jobs list screen
+    [id].tsx          — Job detail + photo capture
+lib/
+  supabase.ts         — Supabase client (not committed)
+```
+
+---
+
+## Related
+
+- **Web Portal:** [MyPathDops](https://github.com/Alekseiminkovskii/MyPathDops) — React + TypeScript + AWS Amplify
+- **Backend:** Supabase (PostgreSQL + Storage + Auth) — shared between web and mobile
+
+---
+
+## Background
+
+Part of MyPathDops — an open-source alternative to [Pathwave](https://pathwave.com), built for telecom field contractors. The author spent 5 years in telecom field work and experienced firsthand the pain of lost photos, manual PDF assembly, and zero office visibility.
