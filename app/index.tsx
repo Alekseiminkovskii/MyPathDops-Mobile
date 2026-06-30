@@ -28,5 +28,5 @@ export default function IndexScreen() {
   }
 
   if (session === null) return <Redirect href="/login" />;
-  return <Redirect href="/jobs" />;
+  return <Redirect href="/(tabs)" />;
 }

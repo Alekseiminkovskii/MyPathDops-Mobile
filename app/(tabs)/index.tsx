@@ -1,13 +1,13 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -64,7 +64,10 @@ export default function JobsScreen() {
           <Text style={styles.subtitle}>{jobs.length} sites in queue</Text>
         </View>
         <TouchableOpacity
-          onPress={() => supabase.auth.signOut()}
+          onPress={async () => {
+            await supabase.auth.signOut();
+            router.replace("/login");
+          }}
           style={styles.signOutBtn}
         >
           <Text style={styles.signOutText}>Sign out</Text>
