@@ -309,11 +309,25 @@ export default function CertificationsScreen() {
                 <Text style={s.label}>Certification type *</Text>
                 <TouchableOpacity
                   style={s.pickerRow}
-                  onPress={() => setShowTypePicker(true)}
+                  onPress={() => setShowTypePicker(!showTypePicker)}
                 >
                   <Text style={s.pickerText}>{form.cert_type}</Text>
-                  <Text style={s.pickerArrow}>›</Text>
+                  <Text style={s.pickerArrow}>{showTypePicker ? "▲" : "▼"}</Text>
                 </TouchableOpacity>
+                {showTypePicker && (
+                  <View style={s.inlineList}>
+                    {CERT_TYPES.map((t) => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[s.typeRow, form.cert_type === t && s.typeRowSelected]}
+                        onPress={() => { setForm({ ...form, cert_type: t }); setShowTypePicker(false); }}
+                      >
+                        <Text style={[s.typeText, form.cert_type === t && s.typeTextSelected]}>{t}</Text>
+                        {form.cert_type === t && <Text style={s.typeCheck}>✓</Text>}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
 
                 {/* Issued date */}
                 <Text style={s.label}>Issued date</Text>
@@ -366,29 +380,6 @@ export default function CertificationsScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Cert type picker modal */}
-      <Modal visible={showTypePicker} animationType="slide" transparent onRequestClose={() => setShowTypePicker(false)}>
-        <View style={s.modalBackdrop}>
-          <View style={s.pickerCard}>
-            <Text style={s.formTitle}>Select Type</Text>
-            <ScrollView>
-              {CERT_TYPES.map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  style={[s.typeRow, form.cert_type === t && s.typeRowSelected]}
-                  onPress={() => { setForm({ ...form, cert_type: t }); setShowTypePicker(false); }}
-                >
-                  <Text style={[s.typeText, form.cert_type === t && s.typeTextSelected]}>{t}</Text>
-                  {form.cert_type === t && <Text style={s.typeCheck}>✓</Text>}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={s.cancelBtn} onPress={() => setShowTypePicker(false)}>
-              <Text style={s.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -531,13 +522,13 @@ const s = StyleSheet.create({
   saveBtnDisabled: { backgroundColor: "#aaa" },
   saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
 
-  // Type picker
-  pickerCard: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 24,
-    maxHeight: "70%",
+  // Inline type list
+  inlineList: {
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    borderRadius: 10,
+    marginTop: 4,
+    overflow: "hidden",
   },
   typeRow: {
     flexDirection: "row",
@@ -551,12 +542,4 @@ const s = StyleSheet.create({
   typeText: { fontSize: 15, color: "#1a1a1a" },
   typeTextSelected: { fontWeight: "600", color: "#16a34a" },
   typeCheck: { fontSize: 16, color: "#16a34a" },
-  cancelBtn: {
-    marginTop: 16,
-    paddingVertical: 14,
-    alignItems: "center",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 12,
-  },
-  cancelBtnText: { fontSize: 15, color: "#666", fontWeight: "600" },
 });
