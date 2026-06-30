@@ -129,8 +129,9 @@ export default function CertificationsScreen() {
   const [techs, setTechs] = useState<TechProfile[]>([]);
   const [techsLoading, setTechsLoading] = useState(true);
   const [techsRefreshing, setTechsRefreshing] = useState(false);
+  const [managerTab, setManagerTab] = useState<"mine" | "team">("mine");
 
-  // ── fetch personal certs (tech only) ───────────────────────────────────────
+  // ── fetch personal certs (all roles) ───────────────────────────────────────
   const fetchCerts = useCallback(async () => {
     if (!userId) return;
     const { data, error } = await supabase
@@ -158,9 +159,9 @@ export default function CertificationsScreen() {
   }, []);
 
   useEffect(() => {
-    if (isTech && userId) fetchCerts();
-    else if (isManager) fetchTechs();
-  }, [isTech, isManager, userId, fetchCerts, fetchTechs]);
+    if (userId) fetchCerts();
+    if (isManager) fetchTechs();
+  }, [isManager, userId, fetchCerts, fetchTechs]);
 
   // ── add cert handlers ───────────────────────────────────────────────────────
   function openForm() {
@@ -251,57 +252,231 @@ export default function CertificationsScreen() {
     );
   }
 
-  // ── PM / SM: tech roster ────────────────────────────────────────────────────
+  // ── PM / SM: tab switcher (My Certs | Team) ─────────────────────────────────
   if (isManager) {
     return (
       <View style={s.container}>
-        <View style={s.header}>
-          <View>
-            <Text style={s.title}>Team Certifications</Text>
-            <Text style={s.count}>{techs.length} technicians</Text>
-          </View>
+        {/* Tab bar */}
+        <View style={s.tabBar}>
+          <TouchableOpacity
+            style={[s.tab, managerTab === "mine" && s.tabActive]}
+            onPress={() => setManagerTab("mine")}
+          >
+            <Text style={[s.tabText, managerTab === "mine" && s.tabTextActive]}>My Certs</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.tab, managerTab === "team" && s.tabActive]}
+            onPress={() => setManagerTab("team")}
+          >
+            <Text style={[s.tabText, managerTab === "team" && s.tabTextActive]}>Team</Text>
+          </TouchableOpacity>
         </View>
-        {techsLoading ? (
-          <View style={s.centered}>
-            <ActivityIndicator size="large" color="#1a1a1a" />
-          </View>
-        ) : (
-          <FlatList
-            data={techs}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={s.list}
-            refreshControl={
-              <RefreshControl
-                refreshing={techsRefreshing}
-                onRefresh={() => { setTechsRefreshing(true); fetchTechs(); }}
-              />
-            }
-            ListEmptyComponent={
-              <View style={s.empty}>
-                <Text style={s.emptyText}>No technicians found</Text>
+
+        {/* My Certs tab */}
+        {managerTab === "mine" && (
+          <>
+            <View style={s.header}>
+              <View>
+                <Text style={s.title}>My Certifications</Text>
+                <Text style={s.count}>{certs.length} total</Text>
               </View>
-            }
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={s.techCard}
-                onPress={() => router.push(`/certifications/${item.id}`)}
-              >
-                <View style={s.techAvatar}>
-                  <Text style={s.techAvatarText}>
-                    {(item.full_name ?? item.email).charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={s.techBody}>
-                  <Text style={s.techName}>{item.full_name ?? item.email}</Text>
-                  {item.full_name && (
-                    <Text style={s.techEmail}>{item.email}</Text>
-                  )}
-                </View>
-                <Text style={s.techArrow}>›</Text>
+              <TouchableOpacity style={s.addBtn} onPress={openForm}>
+                <Text style={s.addBtnText}>+ Add</Text>
               </TouchableOpacity>
+            </View>
+            {certsLoading ? (
+              <View style={s.centered}>
+                <ActivityIndicator size="large" color="#1a1a1a" />
+              </View>
+            ) : (
+              <FlatList
+                data={certs}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={s.list}
+                refreshControl={
+                  <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchCerts(); }} />
+                }
+                ListEmptyComponent={
+                  <View style={s.empty}>
+                    <Text style={s.emptyText}>No certifications yet</Text>
+                  </View>
+                }
+                renderItem={({ item }) => {
+                  const status = getStatus(item.expires_at);
+                  const color = COLOR[status];
+                  return (
+                    <View style={s.card}>
+                      <View style={[s.bar, { backgroundColor: color }]} />
+                      {item.scan_url ? (
+                        <TouchableOpacity onPress={() => setZoomUri(item.scan_url!)}>
+                          <Image source={{ uri: item.scan_url }} style={s.thumb} resizeMode="cover" />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={s.thumbPlaceholder}>
+                          <Text style={s.thumbIcon}>📄</Text>
+                        </View>
+                      )}
+                      <View style={s.body}>
+                        <View style={s.row}>
+                          <Text style={s.name}>{item.name}</Text>
+                          <View style={[s.badge, { backgroundColor: color + "22" }]}>
+                            <Text style={[s.badgeText, { color }]}>{LABEL[status]}</Text>
+                          </View>
+                        </View>
+                        <Text style={s.type}>{item.cert_type}</Text>
+                        <View style={s.dates}>
+                          <Text style={s.date}>Issued: {fmt(item.issued_at)}</Text>
+                          <Text style={s.date}>Expires: {fmt(item.expires_at)}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                }}
+              />
             )}
-          />
+          </>
         )}
+
+        {/* Team tab */}
+        {managerTab === "team" && (
+          <>
+            <View style={s.header}>
+              <View>
+                <Text style={s.title}>Team Certifications</Text>
+                <Text style={s.count}>{techs.length} technicians</Text>
+              </View>
+            </View>
+            {techsLoading ? (
+              <View style={s.centered}>
+                <ActivityIndicator size="large" color="#1a1a1a" />
+              </View>
+            ) : (
+              <FlatList
+                data={techs}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={s.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={techsRefreshing}
+                    onRefresh={() => { setTechsRefreshing(true); fetchTechs(); }}
+                  />
+                }
+                ListEmptyComponent={
+                  <View style={s.empty}>
+                    <Text style={s.emptyText}>No technicians found</Text>
+                  </View>
+                }
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={s.techCard}
+                    onPress={() => router.push({ pathname: "/certifications/[userId]", params: { userId: item.id } } as any)}
+                  >
+                    <View style={s.techAvatar}>
+                      <Text style={s.techAvatarText}>
+                        {(item.full_name ?? item.email).charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={s.techBody}>
+                      <Text style={s.techName}>{item.full_name ?? item.email}</Text>
+                      {item.full_name && (
+                        <Text style={s.techEmail}>{item.email}</Text>
+                      )}
+                    </View>
+                    <Text style={s.techArrow}>›</Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </>
+        )}
+
+        {zoomUri && (
+          <ImageZoomModal uri={zoomUri} onClose={() => setZoomUri(null)} />
+        )}
+
+        {/* Add cert form */}
+        <Modal visible={showForm} animationType="slide" transparent onRequestClose={() => setShowForm(false)}>
+          <KeyboardAvoidingView style={s.modalWrap} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <View style={s.modalBackdrop}>
+              <View style={s.formCard}>
+                <View style={s.formHeader}>
+                  <Text style={s.formTitle}>Add Certification</Text>
+                  <TouchableOpacity onPress={() => setShowForm(false)}>
+                    <Text style={s.formClose}>×</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <Text style={s.label}>Full name *</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="e.g. John Smith"
+                    value={form.name}
+                    onChangeText={(v) => setForm({ ...form, name: v })}
+                    autoCapitalize="words"
+                  />
+                  <Text style={s.label}>Certification type *</Text>
+                  <TouchableOpacity
+                    style={s.pickerRow}
+                    onPress={() => setShowTypePicker(!showTypePicker)}
+                  >
+                    <Text style={s.pickerText}>{form.cert_type}</Text>
+                    <Text style={s.pickerArrow}>{showTypePicker ? "▲" : "▼"}</Text>
+                  </TouchableOpacity>
+                  {showTypePicker && (
+                    <View style={s.inlineList}>
+                      {CERT_TYPES.map((t) => (
+                        <TouchableOpacity
+                          key={t}
+                          style={[s.typeRow, form.cert_type === t && s.typeRowSelected]}
+                          onPress={() => { setForm({ ...form, cert_type: t }); setShowTypePicker(false); }}
+                        >
+                          <Text style={[s.typeText, form.cert_type === t && s.typeTextSelected]}>{t}</Text>
+                          {form.cert_type === t && <Text style={s.typeCheck}>✓</Text>}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  <Text style={s.label}>Issued date</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="YYYY-MM-DD"
+                    value={form.issued_at}
+                    onChangeText={(v) => setForm({ ...form, issued_at: v })}
+                    keyboardType="numbers-and-punctuation"
+                  />
+                  <Text style={s.label}>Expiry date *</Text>
+                  <TextInput
+                    style={s.input}
+                    placeholder="YYYY-MM-DD"
+                    value={form.expires_at}
+                    onChangeText={(v) => setForm({ ...form, expires_at: v })}
+                    keyboardType="numbers-and-punctuation"
+                  />
+                  <Text style={s.label}>Certificate scan (optional)</Text>
+                  <TouchableOpacity style={s.scanBtn} onPress={pickScan}>
+                    {scanUri ? (
+                      <Image source={{ uri: scanUri }} style={s.scanPreview} resizeMode="cover" />
+                    ) : (
+                      <Text style={s.scanBtnText}>📷 Take photo or pick from gallery</Text>
+                    )}
+                  </TouchableOpacity>
+                  {scanUri && (
+                    <TouchableOpacity onPress={() => setScanUri(null)}>
+                      <Text style={s.removeScan}>Remove scan</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[s.saveBtn, saving && s.saveBtnDisabled]}
+                    onPress={handleAdd}
+                    disabled={saving}
+                  >
+                    <Text style={s.saveBtnText}>{saving ? "Saving..." : "Save Certification"}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </View>
     );
   }
@@ -471,6 +646,24 @@ export default function CertificationsScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  tabActive: { borderBottomColor: "#1a1a1a" },
+  tabText: { fontSize: 15, color: "#888", fontWeight: "500" },
+  tabTextActive: { color: "#1a1a1a", fontWeight: "700" },
   header: {
     backgroundColor: "#fff",
     paddingTop: 60,
