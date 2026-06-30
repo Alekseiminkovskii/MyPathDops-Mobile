@@ -22,15 +22,38 @@ import { ImageZoomModal } from "../../components/ImageZoomModal";
 import { supabase } from "../../lib/supabase";
 
 const CERT_TYPES = [
-  "Competent Climber",
-  "Rescue Certification",
-  "RF Safety",
-  "First Aid / CPR",
-  "OSHA 10",
-  "OSHA 30",
-  "Electrical Safety",
-  "Rigging & Signaling",
+  // Tower & climbing
+  "Competent Climber (NWSA)",
+  "Tower Crew Lead (NWSA)",
+  "Tower Site Manager (NWSA)",
+  "Tower Rescue / Competent Rescuer",
+  "Fall Protection Competent Person",
+  // RF & telecom
+  "RF Safety / EME Awareness",
+  "Antenna Installation",
+  "Fiber Optic Technician",
+  "Telecommunications Technician",
+  // OSHA & safety
+  "OSHA 10-Hour",
+  "OSHA 30-Hour",
+  "Electrical Safety (NFPA 70E)",
+  "Confined Space Entry",
+  "Excavation & Trenching Safety",
+  "Hazard Communication (HazCom)",
+  "HAZWOPER 40-Hour",
+  "Fire Extinguisher / Fire Safety",
+  // Equipment
+  "Aerial Lift / Boom Lift Operator",
+  "Scissor Lift Operator",
   "Forklift Operator",
+  "Rigging & Signaling",
+  // Medical / emergency
+  "First Aid / CPR / AED",
+  "DOT Physical / Medical Card",
+  // Driving & aviation
+  "CDL (Commercial Driver's License)",
+  "FAA Part 107 Drone Pilot",
+  // Other
   "Other",
 ];
 
