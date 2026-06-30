@@ -1,6 +1,7 @@
 import { decode } from "base64-arraybuffer";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,7 +20,10 @@ import {
   View,
 } from "react-native";
 import { ImageZoomModal } from "../../components/ImageZoomModal";
+import { useRole } from "../../lib/useRole";
 import { supabase } from "../../lib/supabase";
+
+// ─── constants ────────────────────────────────────────────────────────────────
 
 const CERT_TYPES = [
   // Tower & climbing
@@ -64,6 +68,8 @@ const EMPTY_FORM = {
   expires_at: "",
 };
 
+// ─── types ────────────────────────────────────────────────────────────────────
+
 type Cert = {
   id: string;
   name: string;
@@ -72,6 +78,14 @@ type Cert = {
   expires_at: string;
   scan_url: string | null;
 };
+
+type TechProfile = {
+  id: string;
+  email: string;
+  full_name: string | null;
+};
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function getStatus(expiresAt: string): "valid" | "expiring" | "expired" {
   const days = Math.floor(
@@ -85,38 +99,70 @@ function getStatus(expiresAt: string): "valid" | "expiring" | "expired" {
 const COLOR = { valid: "#22c55e", expiring: "#f59e0b", expired: "#ef4444" };
 const LABEL = { valid: "Valid", expiring: "Expiring Soon", expired: "Expired" };
 
+const fmt = (d: string) =>
+  new Date(d).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+
+// ─── main screen ──────────────────────────────────────────────────────────────
+
 export default function CertificationsScreen() {
+  const { role, userId, loading: roleLoading } = useRole();
+
+  const isTech = role === "tech";
+  const isManager = role === "pm" || role === "safety_manager";
+
+  // ── tech personal-list state ────────────────────────────────────────────────
   const [certs, setCerts] = useState<Cert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [certsLoading, setCertsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [zoomUri, setZoomUri] = useState<string | null>(null);
-
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [scanUri, setScanUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
 
+  // ── PM / SM roster state ────────────────────────────────────────────────────
+  const [techs, setTechs] = useState<TechProfile[]>([]);
+  const [techsLoading, setTechsLoading] = useState(true);
+  const [techsRefreshing, setTechsRefreshing] = useState(false);
+
+  // ── fetch personal certs (tech only) ───────────────────────────────────────
   const fetchCerts = useCallback(async () => {
+    if (!userId) return;
     const { data, error } = await supabase
       .from("certifications")
       .select("*")
+      .eq("user_id", userId)
       .order("expires_at", { ascending: true });
     if (error) Alert.alert("Error", error.message);
     else setCerts(data || []);
-    setLoading(false);
+    setCertsLoading(false);
     setRefreshing(false);
+  }, [userId]);
+
+  // ── fetch tech roster (PM / SM only) ───────────────────────────────────────
+  const fetchTechs = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, email, full_name")
+      .eq("role", "tech")
+      .order("email");
+    if (error) Alert.alert("Error", error.message);
+    else setTechs((data as TechProfile[]) || []);
+    setTechsLoading(false);
+    setTechsRefreshing(false);
   }, []);
 
   useEffect(() => {
-    fetchCerts();
-  }, [fetchCerts]);
+    if (isTech && userId) fetchCerts();
+    else if (isManager) fetchTechs();
+  }, [isTech, isManager, userId, fetchCerts, fetchTechs]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchCerts();
-  }, [fetchCerts]);
-
+  // ── add cert handlers ───────────────────────────────────────────────────────
   function openForm() {
     setForm(EMPTY_FORM);
     setScanUri(null);
@@ -177,7 +223,6 @@ export default function CertificationsScreen() {
         } = supabase.storage.from("cert-scans").getPublicUrl(filename);
         scan_url = publicUrl;
       }
-
       const { error } = await supabase.from("certifications").insert([
         {
           name: form.name.trim(),
@@ -185,10 +230,10 @@ export default function CertificationsScreen() {
           issued_at: form.issued_at || null,
           expires_at: form.expires_at,
           scan_url,
+          user_id: userId,
         },
       ]);
       if (error) throw error;
-
       setShowForm(false);
       fetchCerts();
     } catch (e: any) {
@@ -197,26 +242,76 @@ export default function CertificationsScreen() {
     setSaving(false);
   }
 
-  const fmt = (d: string) =>
-    new Date(d).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-
-  if (loading)
+  // ── loading state ───────────────────────────────────────────────────────────
+  if (roleLoading) {
     return (
       <View style={s.centered}>
         <ActivityIndicator size="large" color="#1a1a1a" />
       </View>
     );
+  }
 
+  // ── PM / SM: tech roster ────────────────────────────────────────────────────
+  if (isManager) {
+    return (
+      <View style={s.container}>
+        <View style={s.header}>
+          <View>
+            <Text style={s.title}>Team Certifications</Text>
+            <Text style={s.count}>{techs.length} technicians</Text>
+          </View>
+        </View>
+        {techsLoading ? (
+          <View style={s.centered}>
+            <ActivityIndicator size="large" color="#1a1a1a" />
+          </View>
+        ) : (
+          <FlatList
+            data={techs}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={s.list}
+            refreshControl={
+              <RefreshControl
+                refreshing={techsRefreshing}
+                onRefresh={() => { setTechsRefreshing(true); fetchTechs(); }}
+              />
+            }
+            ListEmptyComponent={
+              <View style={s.empty}>
+                <Text style={s.emptyText}>No technicians found</Text>
+              </View>
+            }
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={s.techCard}
+                onPress={() => router.push(`/certifications/${item.id}`)}
+              >
+                <View style={s.techAvatar}>
+                  <Text style={s.techAvatarText}>
+                    {(item.full_name ?? item.email).charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={s.techBody}>
+                  <Text style={s.techName}>{item.full_name ?? item.email}</Text>
+                  {item.full_name && (
+                    <Text style={s.techEmail}>{item.email}</Text>
+                  )}
+                </View>
+                <Text style={s.techArrow}>›</Text>
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </View>
+    );
+  }
+
+  // ── tech: personal cert list ────────────────────────────────────────────────
   return (
     <View style={s.container}>
-      {/* Header */}
       <View style={s.header}>
         <View>
-          <Text style={s.title}>Certifications</Text>
+          <Text style={s.title}>My Certifications</Text>
           <Text style={s.count}>{certs.length} total</Text>
         </View>
         <TouchableOpacity style={s.addBtn} onPress={openForm}>
@@ -224,67 +319,64 @@ export default function CertificationsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* List */}
-      <FlatList
-        data={certs}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={s.list}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={s.empty}>
-            <Text style={s.emptyText}>No certifications yet</Text>
-          </View>
-        }
-        renderItem={({ item }) => {
-          const status = getStatus(item.expires_at);
-          const color = COLOR[status];
-          return (
-            <View style={s.card}>
-              <View style={[s.bar, { backgroundColor: color }]} />
-              {item.scan_url ? (
-                <TouchableOpacity onPress={() => setZoomUri(item.scan_url!)}>
-                  <Image
-                    source={{ uri: item.scan_url }}
-                    style={s.thumb}
-                    resizeMode="cover"
-                  />
-                </TouchableOpacity>
-              ) : (
-                <View style={s.thumbPlaceholder}>
-                  <Text style={s.thumbIcon}>📄</Text>
-                </View>
-              )}
-              <View style={s.body}>
-                <View style={s.row}>
-                  <Text style={s.name}>{item.name}</Text>
-                  <View style={[s.badge, { backgroundColor: color + "22" }]}>
-                    <Text style={[s.badgeText, { color }]}>{LABEL[status]}</Text>
+      {certsLoading ? (
+        <View style={s.centered}>
+          <ActivityIndicator size="large" color="#1a1a1a" />
+        </View>
+      ) : (
+        <FlatList
+          data={certs}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={s.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchCerts(); }} />
+          }
+          ListEmptyComponent={
+            <View style={s.empty}>
+              <Text style={s.emptyText}>No certifications yet</Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const status = getStatus(item.expires_at);
+            const color = COLOR[status];
+            return (
+              <View style={s.card}>
+                <View style={[s.bar, { backgroundColor: color }]} />
+                {item.scan_url ? (
+                  <TouchableOpacity onPress={() => setZoomUri(item.scan_url!)}>
+                    <Image source={{ uri: item.scan_url }} style={s.thumb} resizeMode="cover" />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={s.thumbPlaceholder}>
+                    <Text style={s.thumbIcon}>📄</Text>
+                  </View>
+                )}
+                <View style={s.body}>
+                  <View style={s.row}>
+                    <Text style={s.name}>{item.name}</Text>
+                    <View style={[s.badge, { backgroundColor: color + "22" }]}>
+                      <Text style={[s.badgeText, { color }]}>{LABEL[status]}</Text>
+                    </View>
+                  </View>
+                  <Text style={s.type}>{item.cert_type}</Text>
+                  <View style={s.dates}>
+                    <Text style={s.date}>Issued: {fmt(item.issued_at)}</Text>
+                    <Text style={s.date}>Expires: {fmt(item.expires_at)}</Text>
                   </View>
                 </View>
-                <Text style={s.type}>{item.cert_type}</Text>
-                <View style={s.dates}>
-                  <Text style={s.date}>Issued: {fmt(item.issued_at)}</Text>
-                  <Text style={s.date}>Expires: {fmt(item.expires_at)}</Text>
-                </View>
               </View>
-            </View>
-          );
-        }}
-      />
+            );
+          }}
+        />
+      )}
 
-      {/* Zoom modal */}
       {zoomUri && (
         <ImageZoomModal uri={zoomUri} onClose={() => setZoomUri(null)} />
       )}
 
-      {/* Add form modal */}
+      {/* Add form */}
       <Modal visible={showForm} animationType="slide" transparent onRequestClose={() => setShowForm(false)}>
-        <KeyboardAvoidingView
-          style={s.modalWrap}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
+        <KeyboardAvoidingView style={s.modalWrap} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <View style={s.modalBackdrop}>
             <View style={s.formCard}>
               <View style={s.formHeader}>
@@ -293,9 +385,7 @@ export default function CertificationsScreen() {
                   <Text style={s.formClose}>×</Text>
                 </TouchableOpacity>
               </View>
-
               <ScrollView showsVerticalScrollIndicator={false}>
-                {/* Name */}
                 <Text style={s.label}>Full name *</Text>
                 <TextInput
                   style={s.input}
@@ -305,7 +395,6 @@ export default function CertificationsScreen() {
                   autoCapitalize="words"
                 />
 
-                {/* Cert type */}
                 <Text style={s.label}>Certification type *</Text>
                 <TouchableOpacity
                   style={s.pickerRow}
@@ -329,7 +418,6 @@ export default function CertificationsScreen() {
                   </View>
                 )}
 
-                {/* Issued date */}
                 <Text style={s.label}>Issued date</Text>
                 <TextInput
                   style={s.input}
@@ -339,7 +427,6 @@ export default function CertificationsScreen() {
                   keyboardType="numbers-and-punctuation"
                 />
 
-                {/* Expiry date */}
                 <Text style={s.label}>Expiry date *</Text>
                 <TextInput
                   style={s.input}
@@ -349,7 +436,6 @@ export default function CertificationsScreen() {
                   keyboardType="numbers-and-punctuation"
                 />
 
-                {/* Scan */}
                 <Text style={s.label}>Certificate scan (optional)</Text>
                 <TouchableOpacity style={s.scanBtn} onPress={pickScan}>
                   {scanUri ? (
@@ -364,25 +450,23 @@ export default function CertificationsScreen() {
                   </TouchableOpacity>
                 )}
 
-                {/* Save */}
                 <TouchableOpacity
                   style={[s.saveBtn, saving && s.saveBtnDisabled]}
                   onPress={handleAdd}
                   disabled={saving}
                 >
-                  <Text style={s.saveBtnText}>
-                    {saving ? "Saving..." : "Save Certification"}
-                  </Text>
+                  <Text style={s.saveBtnText}>{saving ? "Saving..." : "Save Certification"}</Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-
     </View>
   );
 }
+
+// ─── styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5" },
@@ -408,6 +492,8 @@ const s = StyleSheet.create({
   },
   addBtnText: { color: "#fff", fontWeight: "600", fontSize: 14 },
   list: { padding: 16, gap: 12 },
+
+  // cert card
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -434,12 +520,7 @@ const s = StyleSheet.create({
   },
   thumbIcon: { fontSize: 22 },
   body: { flex: 1, padding: 14 },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 4,
-  },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 },
   name: { fontSize: 16, fontWeight: "600", color: "#1a1a1a", flex: 1, marginRight: 8 },
   type: { fontSize: 13, color: "#666", marginBottom: 8 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
@@ -449,15 +530,40 @@ const s = StyleSheet.create({
   empty: { paddingTop: 60, alignItems: "center" },
   emptyText: { color: "#aaa", fontSize: 16 },
 
-  // Modal shared
+  // tech roster
+  techCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  techAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#1a1a1a",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  techAvatarText: { color: "#fff", fontWeight: "700", fontSize: 18 },
+  techBody: { flex: 1 },
+  techName: { fontSize: 15, fontWeight: "600", color: "#1a1a1a" },
+  techEmail: { fontSize: 12, color: "#888", marginTop: 2 },
+  techArrow: { fontSize: 22, color: "#ccc" },
+
+  // modal / form
   modalWrap: { flex: 1 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "flex-end",
   },
-
-  // Add form
   formCard: {
     backgroundColor: "#fff",
     borderTopLeftRadius: 20,
@@ -496,7 +602,27 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   pickerText: { fontSize: 15, color: "#1a1a1a" },
-  pickerArrow: { fontSize: 20, color: "#aaa" },
+  pickerArrow: { fontSize: 16, color: "#aaa" },
+  inlineList: {
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    borderRadius: 10,
+    marginTop: 4,
+    overflow: "hidden",
+  },
+  typeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  typeRowSelected: { backgroundColor: "#f0fdf4" },
+  typeText: { fontSize: 14, color: "#1a1a1a" },
+  typeTextSelected: { fontWeight: "600", color: "#16a34a" },
+  typeCheck: { fontSize: 15, color: "#16a34a" },
   scanBtn: {
     backgroundColor: "#f7f7f7",
     borderRadius: 10,
@@ -521,25 +647,4 @@ const s = StyleSheet.create({
   },
   saveBtnDisabled: { backgroundColor: "#aaa" },
   saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-
-  // Inline type list
-  inlineList: {
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 10,
-    marginTop: 4,
-    overflow: "hidden",
-  },
-  typeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  typeRowSelected: { backgroundColor: "#f0fdf4" },
-  typeText: { fontSize: 15, color: "#1a1a1a" },
-  typeTextSelected: { fontWeight: "600", color: "#16a34a" },
-  typeCheck: { fontSize: 16, color: "#16a34a" },
 });
