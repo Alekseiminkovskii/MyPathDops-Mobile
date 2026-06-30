@@ -123,6 +123,7 @@ export default function CertificationsScreen() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [scanUri, setScanUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
 
   // ── PM / SM roster state ────────────────────────────────────────────────────
@@ -170,6 +171,39 @@ export default function CertificationsScreen() {
     setShowForm(true);
   }
 
+  async function extractFromImage(uri: string) {
+    setExtracting(true);
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        "https://wnmnfhjugrnzelkrqitz.supabase.co/functions/v1/extract-cert-info",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ imageBase64: base64, mediaType: "image/jpeg" }),
+        }
+      );
+      const info = await res.json();
+      setForm((prev) => ({
+        ...prev,
+        name:       info.holder_name  ?? prev.name,
+        cert_type:  info.cert_type    ?? prev.cert_type,
+        issued_at:  info.issued_at    ?? prev.issued_at,
+        expires_at: info.expires_at   ?? prev.expires_at,
+      }));
+    } catch (err) {
+      console.error("extract-cert-info failed", err);
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   async function pickScan() {
     Alert.alert("Add Scan", "Choose source", [
       {
@@ -181,7 +215,11 @@ export default function CertificationsScreen() {
             return;
           }
           const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-          if (!result.canceled) setScanUri(result.assets[0].uri);
+          if (!result.canceled) {
+            const uri = result.assets[0].uri;
+            setScanUri(uri);
+            extractFromImage(uri);
+          }
         },
       },
       {
@@ -191,7 +229,11 @@ export default function CertificationsScreen() {
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             quality: 0.8,
           });
-          if (!result.canceled) setScanUri(result.assets[0].uri);
+          if (!result.canceled) {
+            const uri = result.assets[0].uri;
+            setScanUri(uri);
+            extractFromImage(uri);
+          }
         },
       },
       { text: "Cancel", style: "cancel" },
@@ -457,7 +499,9 @@ export default function CertificationsScreen() {
                     {scanUri ? (
                       <Image source={{ uri: scanUri }} style={s.scanPreview} resizeMode="cover" />
                     ) : (
-                      <Text style={s.scanBtnText}>📷 Take photo or pick from gallery</Text>
+                      <Text style={s.scanBtnText}>
+                    {extracting ? "Reading certificate..." : "📷 Take photo or pick from gallery"}
+                  </Text>
                     )}
                   </TouchableOpacity>
                   {scanUri && (
@@ -616,7 +660,9 @@ export default function CertificationsScreen() {
                   {scanUri ? (
                     <Image source={{ uri: scanUri }} style={s.scanPreview} resizeMode="cover" />
                   ) : (
-                    <Text style={s.scanBtnText}>📷 Take photo or pick from gallery</Text>
+                    <Text style={s.scanBtnText}>
+                    {extracting ? "Reading certificate..." : "📷 Take photo or pick from gallery"}
+                  </Text>
                   )}
                 </TouchableOpacity>
                 {scanUri && (
